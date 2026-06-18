@@ -1,12 +1,6 @@
-
-local msgpack = require 'MessagePack'
+local msgpack = require('MessagePack')
 
 -- constants
--- common
-local GREETING_SIZE          = 128
-local GREETING_SALT_OFFSET   = 64
-local GREETING_SALT_SIZE     = 44
-
 -- packet codes
 local OK         = 0x00
 local SELECT     = 0x01
@@ -33,69 +27,43 @@ local FETCH_SNAPSHOT  = 0x45
 local REGISTER        = 0x46
 
 -- packet keys
-local REQUEST_TYPE  = 0x00
 local TYPE          = 0x00
 local SYNC          = 0x01
 local REPLICA_ID    = 0x02
 local LSN           = 0x03
-local TIMESTAMP     = 0x04
-local SCHEMA_VERSION = 0x05
-local FLAGS         = 0x09
 local SPACE_ID      = 0x10
 local INDEX_ID      = 0x11
 local LIMIT         = 0x12
 local OFFSET        = 0x13
 local ITERATOR      = 0x14
-local INDEX_BASE    = 0x15
 local KEY           = 0x20
 local TUPLE         = 0x21
 local FUNCTION_NAME = 0x22
 local USER_NAME     = 0x23
 local INSTANCE_UUID = 0x24
-local CLUSTER_UUID  = 0x25
 local VCLOCK        = 0x26
 local EXPRESSION    = 0x27
-local OPS           = 0x28
-local BALLOT        = 0x29
 local DATA          = 0x30
-local ERROR         = 0x31
 
-local BALLOT_IS_RO_CFG = 0x01
-local BALLOT_VCLOCK  = 0x02
-local BALLOT_GC_VCLOCK = 0x03
-local BALLOT_IS_RO  = 0x04
-local BALLOT_IS_ANON = 0x05
-local BALLOT_IS_BOOTED = 0x06
-local TUPLE_META    = 0x2a
-local OPTIONS       = 0x2b
-local ERROR_24      = 0x31
-local METADATA      = 0x32
-local BIND_METADATA = 0x33
-local BIND_COUNT    = 0x34
 local SQL_TEXT      = 0x40
 local SQL_BIND      = 0x41
-local SQL_INFO      = 0x42
 local STMT_ID       = 0x43
 local ERROR         = 0x52
-local FIELD_NAME    = 0x00
-local FIELD_TYPE    = 0x01
-local FIELD_COLL    = 0x02
-local FIELD_IS_NULLABLE = 0x03
-local FIELD_IS_AUTOINCREMENT = 0x04
-local FIELD_SPAN    = 0x05
+
+-- A table of our default settings - these can be changed by changing
+-- the preferences through the GUI or command-line; the Lua-side of that
+-- preference handling is at the end of this script file
+local default_settings =
+{
+    enabled      = true, -- whether this dissector is enabled or not
+    port         = 3303, -- default TCP port number
+}
 
 -- declare the protocol
-tarantool_proto = Proto("tarantool","Tarantool")
---[[
-local tnt_field_sync = ProtoField.new('tnt.sync', 'tnt.sync', ftypes.UINT32)
-
-tarantool_proto.fields = {
-    tnt_field_sync
-}
-]]
+local tarantool_proto = Proto("tarantool2","Tarantool 2")
 
 -- extracts bytes from the buffer
-function binary_string(buffer)
+local function binary_string(buffer)
     local result = {}
     for i=0,buffer:len() - 1 do
         table.insert(result, string.char(buffer(i, 1):le_uint()))
@@ -393,7 +361,7 @@ local function code_to_command(code)
         [CALL_16] = {name = 'call_16', decoder = parser_not_implemented}, -- Deprecated.
         [AUTH]    = {name = 'auth', decoder = parse_auth},
         [EVAL]    = {name = 'eval', decoder = parse_eval},
-        [UPSERT]  = {name = 'upsert', decoder = parser_upsert},
+        [UPSERT]  = {name = 'upsert', decoder = parse_upsert},
         [EXECUTE] = {name = 'execute', decoder = parse_execute},
         [NOP]     = {name = 'nop', decoder = parse_nop},
         [PREPARE] = {name = 'prepare', decoder = parse_prepare},
@@ -450,7 +418,6 @@ function tarantool_proto.dissector(buffer, pinfo, tree)
     local request_length = packet_length + size_length
 
     if (buffer:len() < request_length) then
-        -- debug('reassemble required: ' .. (request_length - buffer:len()) )
         pinfo.desegment_len = request_length - buffer:len()
         pinfo.desegment_offset = 0
         return DESEGMENT_ONE_MORE_SEGMENT
@@ -474,12 +441,6 @@ function tarantool_proto.dissector(buffer, pinfo, tree)
         decoder(body_data, body_buffer, subtree)
 
         pinfo.cols.info = command.name:gsub("^%l", string.upper) .. ' request. ' .. tostring(pinfo.cols.info)
-        --[[print(body_data, bytes_used)
-        for k,v in pairs(body_data) do
-            print(k,v)
-        end]]
-        -- subtree:add( buffer(0,4),"Request Type: " .. buffer(0,4):le_uint() .. ' ' .. requestName(buffer(0,4):le_uint()) )
-        --        request(buffer, subtree)
     else
         local subtree = tree:add(tarantool_proto,buffer(),"Tarantool protocol data (response)")
         local header_descr = string.format('code: 0x%02x (%s), sync: 0x%04x', header_data[TYPE], command.name, header_data[SYNC])
@@ -492,5 +453,63 @@ function tarantool_proto.dissector(buffer, pinfo, tree)
 
 end
 
-tcp_table = DissectorTable.get("tcp.port")
-tcp_table:add(3301,tarantool_proto)
+--------------------------------------------------------------------------------
+-- We want to have our protocol dissection invoked for a specific TCP port,
+-- so get the TCP dissector table and add our protocol to it.
+local function enableDissector()
+    -- using DissectorTable:set() removes existing dissector(s), whereas the
+    -- DissectorTable:add() one adds ours before any existing ones, but
+    -- leaves the other ones alone, which is better
+    DissectorTable.get("tcp.port"):add(default_settings.port, tarantool_proto)
+end
+-- call it now, because we're enabled by default
+enableDissector()
+
+local function disableDissector()
+    DissectorTable.get("tcp.port"):remove(default_settings.port, tarantool_proto)
+end
+
+----------------------------------------
+-- register our preferences
+tarantool_proto.prefs.enabled     = Pref.bool("Dissector enabled", default_settings.enabled,
+                                        "Whether the tarantool dissector is enabled or not")
+
+tarantool_proto.prefs.port        = Pref.uint("Port number", default_settings.port,
+                                        "The TCP port number for Tarantool")
+
+----------------------------------------
+-- the function for handling preferences being changed
+function tarantool_proto.prefs_changed()
+    local need_reload = false
+
+    if default_settings.enabled ~= tarantool_proto.prefs.enabled then
+        default_settings.enabled = tarantool_proto.prefs.enabled
+        if default_settings.enabled then
+            enableDissector()
+        else
+            disableDissector()
+        end
+
+        need_reload = true
+    end
+
+    if default_settings.port ~= tarantool_proto.prefs.port then
+        -- remove old one, if not 0
+        if default_settings.port ~= 0 then
+            disableDissector()
+        end
+        -- set our new default
+        default_settings.port = tarantool_proto.prefs.port
+        -- add new one, if not 0
+        if default_settings.port ~= 0 then
+            enableDissector()
+        end
+
+        need_reload = true
+    end
+
+    -- have to reload the capture file for this type of change
+    if need_reload then
+        reload()
+    end
+end

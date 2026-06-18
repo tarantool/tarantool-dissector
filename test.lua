@@ -8,6 +8,10 @@
 --
 -- How to run: tarantool test.lua
 
+if _TARANTOOL == nil then
+    return
+end
+
 local netbox = require('net.box')
 local popen = require('popen')
 local fiber = require('fiber')
