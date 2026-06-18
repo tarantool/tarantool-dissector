@@ -1,0 +1,6 @@
+# Build output -- the released amalgamated file is attached to GitHub Releases.
+dist/
+
+# Python bytecode from the fixture generator
+__pycache__/
+*.pyc

@@ -1,0 +1,62 @@
+name: release
+
+# Build the single amalgamated dissector and attach it to the GitHub Release.
+# Runs only for release tags (v*), never on ordinary pushes -- dist/ is not
+# committed, so the released file is produced here and lives on the Release.
+# The modular src/ tree ships with the auto-generated source archive.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
+      - name: Install tshark
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq tshark
+
+      - name: Build the amalgamated dissector
+        run: sh amalgamate.sh
+
+      # Gate the release on the test suite so a tag can never ship an untested
+      # build (the tests workflow does not run on tags). Assert tshark is present
+      # first: the suite SKIPS (exit 0) without it, which would let the gate pass
+      # vacuously and ship an untested build.
+      - name: Test both install forms before publishing
+        env:
+          REQUIRE_AMALGAMATED: "1"
+        run: |
+          tshark --version >/dev/null || { echo "::error::tshark missing; refusing to publish untested"; exit 1; }
+          [ "$(id -u)" -ne 0 ] || { echo "::error::running as root; tests would skip -- refusing to publish untested"; exit 1; }
+          go test ./tests/
+
+      - name: Publish tarantool.dissector.lua to the Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Create the release if the tag has none yet, otherwise attach to the
+          # existing one (e.g. a release drafted in the UI), replacing a stale asset.
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" \
+              dist/tarantool.dissector.lua --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              dist/tarantool.dissector.lua \
+              --title "$GITHUB_REF_NAME" \
+              --generate-notes
+          fi
