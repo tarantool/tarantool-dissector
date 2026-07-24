@@ -83,7 +83,6 @@ if not replica then
     os.exit()
 end
 
--- Wait for replica to connect.
 while #box.info.replication < 2 do
     fiber.sleep(0.1)
 end
@@ -157,7 +156,6 @@ space:replace({201, datetime.now() - datetime.new({year = 1})})
 
 conn:close()
 
--- Teardown replica.
 replica:kill()
 replica:wait()
 

@@ -14,8 +14,6 @@ Output: tests/pcap/synthetic-*.pcap
 import os
 import struct
 
-# --- MessagePack encoder (only what these fixtures need) --------------------
-
 
 class Ext:
     """A MsgPack extension value (e.g. MP_DATETIME type 4)."""
@@ -91,9 +89,6 @@ def pdu(rtype, sync, body):
     return b"\xce" + len(payload).to_bytes(4, "big") + payload
 
 
-# --- pcap / IPv4 / TCP framing ----------------------------------------------
-
-
 def ip_checksum(hdr):
     s = 0
     for i in range(0, len(hdr), 2):
@@ -163,8 +158,6 @@ def write_pcap(path, frames):
             f.write(fr)
 
 
-# --- fixtures ---------------------------------------------------------------
-
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, "pcap")
 
@@ -200,7 +193,7 @@ def gen_uint64():
 def gen_datetime():
     s = Stream()
     # MP_DATETIME (fixext8) with a NEGATIVE (pre-1970) epoch: guards the signed
-    # (le_int) seconds decode.
+    # 64-bit seconds decode.
     import struct as _s
 
     dt = Ext(4, _s.pack("<q", -100000000))

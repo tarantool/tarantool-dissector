@@ -435,7 +435,6 @@ func TestModularLoaderCollision(t *testing.T) {
 
 	pcap, err := filepath.Abs(filepath.Join(pcapDir, "tarantool-3.x.pcap"))
 	require.NoError(t, err)
-	// Load the foreign plugin first, then ours.
 	cmd := exec.Command(tsharkBin, "-r", pcap,
 		"-X", "lua_script:"+foreign, "-X", "lua_script:"+loader, "-O", "tarantool")
 	cmd.Env = isolatedEnv

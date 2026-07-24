@@ -89,7 +89,7 @@ func testLegacy15(t *testing.T, f form) {
 		`{"return box.space[0]:len()"}`,
 		"return code: 0x00000000 (ok)",
 		"error: Procedure 'nonexistent_function' is not defined",
-		"limit: unlimited", // legacy SELECT with limit 0xffffffff
+		"limit: unlimited",
 	)
 	r.hasRequestsAndResponses()
 	r.filterYields(`tnt.request=="call"`)
@@ -156,11 +156,11 @@ func testModern211(t *testing.T, f form) {
 		`SELECT FROM space 512 WHERE index(0) = (2) LIMIT 2 OFFSET 0 ITERATOR EQ`,
 		`SELECT FROM space 512 WHERE index(0) = () LIMIT 10 OFFSET 0 ITERATOR ALL`,
 		`DELETE FROM space(512) WHERE index(0) = (2)`,
-		"execute prepared statement id", // prepared-statement execute
-		"with parameters (",             // SQL bind parameters
-		`ops: {`,                        // update/upsert operations list
-		`{"+", 3, 5}`,                   // a decoded update operation
-		"at ./src/box/",                 // structured error frame file:line
+		"execute prepared statement id",
+		"with parameters (",
+		`ops: {`,
+		`{"+", 3, 5}`,
+		"at ./src/box/",
 	)
 	r.contains("Tarantool greeting")
 	r.contains("Server version: Tarantool 2.11")
@@ -274,10 +274,10 @@ func testReplicationAsync(t *testing.T, f form) {
 		"replicaset_uuid:",
 		"vclock:",
 		"event key: internal.ballot",
-		`tuple: {100, "node-1-row-0"}`,     // non-conflicting async write
-		`tuple: {1, "inserted-on-node-2"}`, // conflicting writes from two nodes
+		`tuple: {100, "node-1-row-0"}`,
+		`tuple: {1, "inserted-on-node-2"}`,
 		`tuple: {1, "inserted-on-node-3"}`,
-		`tuple: {500, "tx-a"}`, // streamed transaction body
+		`tuple: {500, "tx-a"}`,
 		`tuple: {501, "tx-b"}`,
 	)
 }
@@ -323,9 +323,9 @@ func testPortsRange(t *testing.T, f form) {
 func testNullInTuple(t *testing.T, f form) {
 	r := newRun(t, f, "synthetic-null.pcap")
 	r.decodesCleanly()
-	r.contains(`tuple: {1, nil, 3}`) // request tuple
-	r.contains(`{1, nil, 3}`)        // response data row
-	r.notContains("3 = 3")           // the pre-fix map-key misrender must not reappear
+	r.contains(`tuple: {1, nil, 3}`)
+	r.contains(`{1, nil, 3}`)
+	r.notContains("3 = 3") // pre-fix map-key misrender must not reappear
 }
 
 // uint64 body values render as exact unsigned decimals (no double precision loss,
@@ -334,13 +334,13 @@ func testNullInTuple(t *testing.T, f form) {
 func testUint64Render(t *testing.T, f form) {
 	r := newRun(t, f, "synthetic-uint64.pcap")
 	r.decodesCleanly()
-	r.contains(`tuple: {18446744073709551615, 9223372036854775808}`) // 2^64-1 and 2^63 in a tuple
-	r.contains("replica_id: 1, lsn: 5000000000, term: 2")            // synchro LSN >= 2^32 (regression guard)
-	r.notContains("table: 0x")                                       // an ext marker never leaks as a table address
-	r.filterYields("tnt.sync==9223372036854775808")                  // header uint64 >= 2^63 read exactly
+	r.contains(`tuple: {18446744073709551615, 9223372036854775808}`)
+	r.contains("replica_id: 1, lsn: 5000000000, term: 2") // synchro LSN >= 2^32 (regression guard)
+	r.notContains("table: 0x")                            // an ext marker never leaks as a table address
+	r.filterYields("tnt.sync==9223372036854775808")       // header uint64 >= 2^63 read exactly
 }
 
-// MP_DATETIME with a negative (pre-1970) epoch decodes via signed le_int seconds.
+// MP_DATETIME with a negative (pre-1970) epoch decodes via a signed 64-bit read.
 func testDatetimeNegative(t *testing.T, f form) {
 	r := newRun(t, f, "synthetic-datetime.pcap")
 	r.decodesCleanly()
@@ -353,9 +353,9 @@ func testReassembly(t *testing.T, f form) {
 	r := newRun(t, f, "synthetic-reassembly.pcap")
 	r.decodesCleanly()
 	r.requests("eval")
-	r.contains("Reassembled TCP Segments") // the PDU spanned two segments and was reassembled
-	// The reassembled body decoded; assert only a prefix, since Wireshark
-	// truncates a tree-item label near 240 chars (the full expr is longer).
+	r.contains("Reassembled TCP Segments")
+	// Assert only a prefix of the decoded body: Wireshark truncates a tree-item
+	// label near 240 chars, and the full expr is longer.
 	r.contains("eval return " + strings.Repeat("A", 100))
 }
 
@@ -371,7 +371,7 @@ func testMiscOpcodes(t *testing.T, f form) {
 		"NOP (No Operation)",
 		"Tarantool PDU (undecodable)",
 		"malformed or truncated MsgPack",
-		`{"push-payload"}`,     // CHUNK (box.session.push) response body
-		"<error ext, 3 bytes>", // opaque MP_EXT labelled-blob fallback
+		`{"push-payload"}`,
+		"<error ext, 3 bytes>",
 	)
 }

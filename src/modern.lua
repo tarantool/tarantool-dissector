@@ -24,11 +24,11 @@ local INSERT = 0x02
 local REPLACE = 0x03
 local UPDATE = 0x04
 local DELETE = 0x05
-local CALL_16 = 0x06 -- 1.6-era call: coerced results into tuples; kept as call_16
+local CALL_16 = 0x06
 local AUTH = 0x07
 local EVAL = 0x08
 local UPSERT = 0x09
-local CALL = 0x0a -- modern call (1.7.2+): returns a plain array
+local CALL = 0x0a
 local EXECUTE = 0x0b
 local NOP = 0x0c
 local PREPARE = 0x0d
@@ -182,7 +182,7 @@ local function map_value_offsets(raw, base_off)
 	local offsets = {}
 	local iter = msgpack.unpacker(raw:sub(first))
 	for _ = 1, count do
-		local _, key = iter() -- key element
+		local _, key = iter()
 		local value_pos = iter() -- start of value element (1-based within sub)
 		if value_pos == nil then
 			break
@@ -242,7 +242,7 @@ end
 
 local function escape_call_arg(a)
 	if type(a) == "table" and getmetatable(a) == ext_mt then
-		return a.text -- a decoded MP_EXT value (datetime, decimal, uuid, ...)
+		return a.text
 	end
 	local t = type(a)
 	if t == "number" or t == "boolean" then
@@ -496,7 +496,7 @@ local MP_ERROR_FIELDS = 0x06
 local function add_error_stack(subtree, buffer, err)
 	local stack = (type(err) == "table") and err[MP_ERROR_STACK] or nil
 	if type(stack) ~= "table" then
-		subtree:add(buffer, "error: " .. escape_call_arg(err)) -- unexpected shape
+		subtree:add(buffer, "error: " .. escape_call_arg(err))
 		return
 	end
 	local node = subtree:add(buffer, "error stack")
@@ -561,7 +561,7 @@ local function parse_response(tbl, buffer, subtree)
 				node:add(buffer, v)
 			end
 		else
-			node:add(buffer, escape_call_arg(tbl[DATA])) -- bare scalar/ext payload
+			node:add(buffer, escape_call_arg(tbl[DATA]))
 		end
 	end
 	if tbl[SQL_INFO] ~= nil then
@@ -744,7 +744,7 @@ local function dissect_modern(tvb, pinfo, tree, offset)
 
 		local body_range = (body_len > 0) and tvb(body_off, body_len) or tvb(offset, total)
 		local decoder = command.decoder or parser_not_implemented
-		decoder(body_data or {}, body_range, subtree) -- empty table when body-less
+		decoder(body_data or {}, body_range, subtree)
 	end)
 	if not rendered then
 		subtree:add(tvb(offset, total), "malformed or non-conforming body")
